@@ -38,13 +38,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onPlaceSelected(Place place) {
                 // TODO: Get info about the selected place.
-                Log.i("sjsj", "Place: " + place.getName());
+                Log.i("selected", "Place: " + place.getName());
             }
 
             @Override
             public void onError(Status status) {
                 // TODO: Handle the error.
-                Log.i("tag", "An error occurred: " + status);
+                Log.i("error", "An error occurred: " + status);
             }
         });
 
