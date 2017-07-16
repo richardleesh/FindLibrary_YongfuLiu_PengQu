@@ -1,6 +1,7 @@
 package com.example.liu_qu.findlibrary_yongfuliu_pengqu;
 
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
@@ -15,7 +16,10 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 import java.security.Permission;
@@ -24,11 +28,15 @@ import java.util.jar.Manifest;
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
     private GoogleMap mMap;
+    public static final LatLng toronto_southwest_corner = new LatLng(43.580306, -79.639703);
+    public static final LatLng toronto_northeast_corner = new LatLng(43.855875, -79.115062);
+    public static final LatLngBounds toronto_latLngBounds = new LatLngBounds(toronto_southwest_corner, toronto_northeast_corner);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
 
         //set place seach
         PlaceAutocompleteFragment autocompleteFragment = (PlaceAutocompleteFragment)
@@ -68,7 +76,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-
+        mMap.setLatLngBoundsForCameraTarget(toronto_latLngBounds);
 
         //set map
         UiSettings uiSettings = mMap.getUiSettings();
@@ -81,11 +89,40 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             mMap.setMyLocationEnabled(true);
         }
         // Add a marker in Toronto and move the camera
-        LatLng toronto = new LatLng(43.6687477, -79.4419475);
+        LatLng toronto = new LatLng(43.653908, -79.384293);
         mMap.addMarker(new MarkerOptions()
                 .title("Toronto")
                 .snippet("The most populous city in Canada.")
                 .position(toronto));
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, 10));
+
+        //set map rang in 5000 meters
+        Circle circle = mMap.addCircle(new CircleOptions().center(toronto).radius(5000).strokeColor(Color.RED));
+        circle.setVisible(false);
+        int zoomlevel = getZoomLevel(circle);
+
+
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
+
+        mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+            @Override
+            public void onMapClick(LatLng latLng) {
+                mMap.moveCamera(CameraUpdateFactory.newLatLngBounds(toronto_latLngBounds, 0));
+            }
+        });
+
     }
+
+
+    //convert kilometers to zoom level
+    //external code from: https://stackoverflow.com/questions/6002563/android-how-do-i-set-the-zoom-level-of-map-view-to-1-km-radius-around-my-curren
+    public int getZoomLevel(Circle circle) {
+        int zoomLevel = 13;
+        if (circle != null){
+            double radius = circle.getRadius();
+            double scale = radius / 500;
+             zoomLevel=(int) (16 - Math.log(scale) / Math.log(2));
+        }
+        return  zoomLevel;
+    }
+
 }
