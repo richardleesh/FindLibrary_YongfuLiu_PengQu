@@ -344,7 +344,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public boolean onMarkerClick(Marker marker) {
 
-               displayLibrary();
+               displayLibrary(marker);
                 return false;
             }
         });
@@ -389,7 +389,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
             public void onMapClick(LatLng latLng) {
-                mMap.moveCamera(CameraUpdateFactory.newLatLngBounds(toronto_latLngBounds, 0));
+                //mMap.moveCamera(CameraUpdateFactory.newLatLngBounds(toronto_latLngBounds, 0));
             }
         });
 
@@ -410,8 +410,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
     //Display library info
-    private void displayLibrary() {
-        initiatePopupWindow() ;
+    private void displayLibrary(Marker marker) {
+        initiatePopupWindow(marker) ;
     }
 
 
@@ -423,7 +423,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     //set up pop up window to display libarary when a map marker is clicked
     private PopupWindow pw;
 
-    private void initiatePopupWindow() {
+    private void initiatePopupWindow(Marker marker) {
         try {
             //We need to get the instance of the LayoutInflater, use the context of this activity
             LayoutInflater inflater = (LayoutInflater) this.getSystemService(this.LAYOUT_INFLATER_SERVICE);
@@ -437,6 +437,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             Button cancelButton = (Button) layout.findViewById(R.id.cancel);
             cancelButton.setOnClickListener(cancel_button_click_listener);
+
+            TextView libaryNameView = (TextView) findViewById(R.id.name);
+            String libaryName = marker.getTitle();
+            for(DownLoadData dd : downLoadDatas) {
+                if(libaryName.equalsIgnoreCase(dd.libraryName)){
+                    libaryNameView.setText(dd.address);
+                }
+            }
+
 
         } catch (Exception e) {
             e.printStackTrace();
