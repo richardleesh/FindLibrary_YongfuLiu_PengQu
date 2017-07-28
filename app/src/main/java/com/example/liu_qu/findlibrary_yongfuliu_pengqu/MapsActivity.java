@@ -46,6 +46,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private PopupWindow popUpWindow;
 
+    public boolean isDataLoaded = false;
+    public boolean isMapReady = false;
+
+    //default position is toronto downtown
+    private LatLng searchedPosition = new LatLng(43.653908, -79.384293);
+
     private GoogleMap mMap;
     public static final LatLng toronto_southwest_corner = new LatLng(43.580306, -79.639703);
     public static final LatLng toronto_northeast_corner = new LatLng(43.855875, -79.115062);
@@ -99,6 +105,20 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onPlaceSelected(Place place) {
                 // TODO: Get info about the selected place.
+                //move map camera to searched result;
+                searchedPosition = place.getLatLng();
+                //set map rang in 5000 meters
+                Circle circle = mMap.addCircle(new CircleOptions().center(searchedPosition).radius(5000).strokeColor(Color.RED));
+                circle.setVisible(false);
+
+                //convert this circle range to zoom level number
+                //Note: !!!getZommLevel() function is borrowed from stackoverflow
+                //Note: !!!see details for this code source
+                int zoomlevel = getZoomLevel(circle);
+
+
+                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(searchedPosition, zoomlevel));
+
                 Log.i("selected", "Place: " + place.getName());
             }
 
@@ -171,6 +191,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         protected void onPostExecute(Long result){
             //once finished all we do here is print out the headlines
             //you will extend this idea to refresh any views (if necessary)
+
+            isDataLoaded = true;
+            if(isMapReady == true){
+                addMapMarkers(mMap,downLoadDatas);
+            }
             Log.d("ASYNCTASK COMPLETE", "Downloaded " + result + "files");
             //Log.d("ASYNCTASK COMPLETE", "Printing " + headlines.size() + "headlines");
 
@@ -335,6 +360,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
      */
     @Override
     public void onMapReady(GoogleMap googleMap) {
+
+        isMapReady = true;
+
         mMap = googleMap;
         mMap.setLatLngBoundsForCameraTarget(toronto_latLngBounds);
 
@@ -359,6 +387,43 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 == PackageManager.PERMISSION_GRANTED) {
             mMap.setMyLocationEnabled(true);
         }
+
+        if(isDataLoaded == true){
+            addMapMarkers(mMap, downLoadDatas);
+        }
+
+
+
+
+
+        LatLng toronto = new LatLng(43.653908, -79.384293);
+        //set map rang in 5000 meters
+        Circle circle = mMap.addCircle(new CircleOptions().center(toronto).radius(5000).strokeColor(Color.RED));
+        circle.setVisible(false);
+
+        mMap.addMarker(new MarkerOptions()
+                .title("toronto")
+                .snippet("ha")
+                .position(toronto));
+
+        //convert this circle range to zoom level number
+        //Note: !!!getZommLevel() function is borrowed from stackoverflow
+        //Note: !!!see details for this code source
+        int zoomlevel = getZoomLevel(circle);
+
+
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
+
+
+
+    }
+
+    //this function called either when isDataLoaded is true or when isMapReady is true
+    //which ever coming first
+    //isDataloaded = true, call this funtion in onMapReady(GoogleMap googleMap) funtion
+    //isMapReady = true, call this funtion in DownloadAndParseKMLTask.onPostExecute(Long result)
+    public void addMapMarkers(GoogleMap mMap, Vector<DownLoadData> downLoadDatas){
+        int i = 0;
         // Add a library marker in Toronto and move the camera
         for(DownLoadData dd : downLoadDatas) {
             String  coordinate = dd.coordinates;
@@ -370,30 +435,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     .title(dd.libraryName)
                     .snippet(dd.address)
                     .position(library));
+
+            i++;
+            Log.d("MarkerCreated", "marker:" + i);
+
         }
-
-        LatLng toronto = new LatLng(43.653908, -79.384293);
-        //set map rang in 5000 meters
-        Circle circle = mMap.addCircle(new CircleOptions().center(toronto).radius(5000).strokeColor(Color.RED));
-        circle.setVisible(false);
-        //convert this circle range to zoom level number
-        //Note: !!!getZommLevel() function is borrowed from stackoverflow
-        //Note: !!!see details for this code source
-        int zoomlevel = getZoomLevel(circle);
-
-
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
-
-       
-
-        mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
-            @Override
-            public void onMapClick(LatLng latLng) {
-                //mMap.moveCamera(CameraUpdateFactory.newLatLngBounds(toronto_latLngBounds, 0));
-            }
-        });
-
     }
+
+
+
+
 
 
     //convert kilometers to zoom level
@@ -438,11 +489,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Button cancelButton = (Button) layout.findViewById(R.id.cancel);
             cancelButton.setOnClickListener(cancel_button_click_listener);
 
-            TextView libaryNameView = (TextView) findViewById(R.id.name);
+            TextView nameView = (TextView) layout.findViewById(R.id.name);
+            TextView addrView = (TextView) layout.findViewById(R.id.address);
+            TextView phoneView = (TextView) layout.findViewById(R.id.phone);
+
+            nameView.setText(marker.getTitle());
             String libaryName = marker.getTitle();
             for(DownLoadData dd : downLoadDatas) {
                 if(libaryName.equalsIgnoreCase(dd.libraryName)){
-                    libaryNameView.setText(dd.address);
+                    addrView.setText(dd.address);
+                    phoneView.setText(dd.phoneNumber);
                 }
             }
 
@@ -458,6 +514,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     };
     //end of set up pop up window to display libarary when a map marker is clicked
+
+
 
 
 
