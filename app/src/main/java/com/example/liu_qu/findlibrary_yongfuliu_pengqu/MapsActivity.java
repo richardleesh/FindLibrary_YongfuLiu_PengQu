@@ -1,8 +1,17 @@
 package com.example.liu_qu.findlibrary_yongfuliu_pengqu;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
+import android.location.LocationManager;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Looper;
+import android.provider.Settings;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
@@ -16,7 +25,17 @@ import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -31,6 +50,8 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserFactory;
@@ -39,15 +60,38 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.Permission;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Timer;
 import java.util.Vector;
 import java.util.jar.Manifest;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
+import static com.google.android.gms.location.LocationServices.getFusedLocationProviderClient;
+
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
+        GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
+
+
+    // declare location request
+    private LocationRequest locationRequest;
+    public static final int UPDATE_INTERVAL = 5000; // 5 secs
+    public static final int FASTEST_UPDATE_INTERVAL = 2000;// 2 secs
+
+
+    private boolean permissionIsGranted = true;
+
+
+    private GoogleApiClient googleApiClient;
+    private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
+    public static Location currentLocation;
+
 
     private PopupWindow popUpWindow;
 
     public boolean isDataLoaded = false;
     public boolean isMapReady = false;
+    public boolean isLocationServiceConnected = false;
+
 
     //default position is toronto downtown
     private LatLng searchedPosition = new LatLng(43.653908, -79.384293);
@@ -60,7 +104,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     //Qu_11111111111111111111111111111111111111111111111111111111111111
     //Class DownLoadData
-    public class DownLoadData{
+    public class DownLoadData {
         public String id;
         public String libraryName;
         public String link;
@@ -68,27 +112,27 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         public String phoneNumber;
         public String coordinates;
 
-        public DownLoadData(){super();};
+        public DownLoadData() {
+            super();
+        }
 
+        ;
 
 
         public DownLoadData(String id, String libraryName, String link,
-                            String address, String phoneNumber, String coordinates){
-            this.id=id;
-            this.libraryName=libraryName;
-            this.link=link;
-            this.address=address;
-            this.phoneNumber=phoneNumber;
-            this.coordinates=coordinates;
+                            String address, String phoneNumber, String coordinates) {
+            this.id = id;
+            this.libraryName = libraryName;
+            this.link = link;
+            this.address = address;
+            this.phoneNumber = phoneNumber;
+            this.coordinates = coordinates;
 
         }
     }
 
     Vector<DownLoadData> downLoadDatas = new Vector<DownLoadData>();
     //Qu_11111111111111111111111111111111111111111111111111111111111111
-
-
-
 
 
     @Override
@@ -137,20 +181,74 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
 
+       /// make sure gps is enabled
+        LocationManager locationManager =
+                (LocationManager) getSystemService(LOCATION_SERVICE);
+        if ((!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+                || (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+                ) {
+            Toast.makeText(this, "Please enable GPS!",
+                    Toast.LENGTH_LONG).show();
+            Intent intent = new Intent(
+                    Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            startActivity(intent);
+        }
+
+        /**
+         * Lesson learned:
+         * keep module version in build.gradle:  different vesion mix will cause fatal error
+         *     compile 'com.google.android.gms:play-services-maps:11.0.2'
+         *     compile 'com.google.android.gms:play-services-currentLocation:9.0.1'
+         *
+         * correcction method:
+         * change :compile 'com.google.android.gms:play-services-currentLocation:9.0.1'
+         * to:     compile 'com.google.android.gms:play-services-currentLocation:11.0.2'
+         *
+         */
+       googleApiClient = new GoogleApiClient.Builder(this)
+                .addApi(LocationServices.API)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .build();
+
+
+        locationRequest = LocationRequest.create()
+                .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+                .setInterval(UPDATE_INTERVAL)
+                .setFastestInterval(FASTEST_UPDATE_INTERVAL);
+
+
+        // check permissionIsGranted , if not granted , request permissionIsGranted
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permissionIsGranted. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+
+            //// 1 is the request code for call back funciton : onRequestPermissionsResult()
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+
+        }
+
+
         //Qu_2222222222222222222222222222222222222222222222222222222222222222222222
         //instantiate a URL object used to point to the kml resource
         URL url = null;
-        try{
+        try {
             url = new URL("http://www.torontopubliclibrary.ca/data/library-data.kml");
-        }catch (Exception e){
+        } catch (Exception e) {
             Log.d("AN EXCEPTION HAPPENED", e.getMessage());
         }
 
 
-
         //use our custom AsyncTask to download (and process) the xml resource available at the indicated URL
         //call a framework method that will eventually call doInBackground found below
-        DownloadAndParseKMLTask task=new DownloadAndParseKMLTask(this);
+        DownloadAndParseKMLTask task = new DownloadAndParseKMLTask(this);
         task.execute(url);
         //Qu_2222222222222222222222222222222222222222222222222222222222222222222222
 
@@ -158,13 +256,27 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        //googleApiClient.connect();
+    }
+
+    @Override
+    public void onStop() {
+        //googleApiClient.disconnect();
+        super.onStop();
+    }
+
+
     //Qu_3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
     private class DownloadAndParseKMLTask extends AsyncTask<URL, Integer, Long> {
-        MapsActivity mapsActivity=null;
-        private DownloadAndParseKMLTask(MapsActivity ma)
-        {
-            mapsActivity=ma;
+        MapsActivity mapsActivity = null;
+
+        private DownloadAndParseKMLTask(MapsActivity ma) {
+            mapsActivity = ma;
         }
+
         //FYI - doInBackground is a "slot" method where we have to fill in its behaviour to compile
         /*the framework requires us to be able to accept more than one "task",
         so this method has to be able to accept multiple arguments (variadic)
@@ -188,13 +300,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //FYI the methods below are "hook" methods because they already have default implementations that we can override
 
         //onPostExecute will be called by the framework when our AsyncTask finished
-        protected void onPostExecute(Long result){
+        protected void onPostExecute(Long result) {
             //once finished all we do here is print out the headlines
             //you will extend this idea to refresh any views (if necessary)
 
             isDataLoaded = true;
-            if(isMapReady == true){
-                addMapMarkers(mMap,downLoadDatas);
+            if (isMapReady == true) {
+                addMapMarkers(mMap, downLoadDatas);
             }
             Log.d("ASYNCTASK COMPLETE", "Downloaded " + result + "files");
             //Log.d("ASYNCTASK COMPLETE", "Printing " + headlines.size() + "headlines");
@@ -204,10 +316,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    public void downloadFile(URL url){
+    public void downloadFile(URL url) {
 
         //we need a try-catch block right away - almost all this stuff can throw exceptions
-        try{
+        try {
             //create a new http url connection
             HttpURLConnection httpURLConnection = (HttpURLConnection) url.openConnection();
             //create an InputStreamReader that we can use to read data from the http url connection
@@ -240,14 +352,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             int event = xmlPullParser.getEventType();
 
             //pattern: use a flag to remember that we are inside a title element
-            boolean insidePlacemark=false;
+            boolean insidePlacemark = false;
             boolean insideName = false;
-            boolean insideDescription=false;
-            boolean insideAddress=false;
-            boolean insidePhoneNumber=false;
-            boolean insideCoordinates=false;
+            boolean insideDescription = false;
+            boolean insideAddress = false;
+            boolean insidePhoneNumber = false;
+            boolean insideCoordinates = false;
 
-            DownLoadData downLoadData=new DownLoadData();
+            DownLoadData downLoadData = new DownLoadData();
 
             /*
             <Placemark id="LIB02">
@@ -263,75 +375,60 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             </Point>
             </Placemark>
              */
-            while(event != XmlPullParser.END_DOCUMENT){
+            while (event != XmlPullParser.END_DOCUMENT) {
                 //process events inside this loop
-                if(event == XmlPullParser.START_DOCUMENT)
-                { //this will be executed at the start of the document
+                if (event == XmlPullParser.START_DOCUMENT) { //this will be executed at the start of the document
                     Log.d("PARSING XML", "We reached the start of the document");
-                }
-                else if(event == XmlPullParser.START_TAG)
-                { //this will be executed at the start of EACH tag (element)
+                } else if (event == XmlPullParser.START_TAG) { //this will be executed at the start of EACH tag (element)
                     String tagName = xmlPullParser.getName();
                     Log.d("PARSING XML", "We reached the start of tag: " + tagName);
                     //TODO: you can use the name here to determine whether you've reached a news "item" and/or "link" in the xml
-                    if(tagName.equalsIgnoreCase("placemark")){
+                    if (tagName.equalsIgnoreCase("placemark")) {
                         downLoadData.id = xmlPullParser.getAttributeValue(0);
-                    }
-                    else if(tagName.equalsIgnoreCase("name")){
+                    } else if (tagName.equalsIgnoreCase("name")) {
                         //store this title in the headlines
 
                         Log.d("PARSING XML", "found a title tag: " + tagName);
                         insideName = true;
-                    }
-                    else if(tagName.equalsIgnoreCase("description"))
-                    {
-                        insideDescription=true;
-                    }
-                    else if(tagName.equalsIgnoreCase("address")){
+                    } else if (tagName.equalsIgnoreCase("description")) {
+                        insideDescription = true;
+                    } else if (tagName.equalsIgnoreCase("address")) {
 
-                        insideAddress=true;
+                        insideAddress = true;
+                    } else if (tagName.equalsIgnoreCase("phoneNumber")) {
+                        insidePhoneNumber = true;
+                    } else if (tagName.equalsIgnoreCase("coordinates")) {
+                        insideCoordinates = true;
                     }
-                    else if (tagName.equalsIgnoreCase("phoneNumber")){
-                        insidePhoneNumber=true;
-                    }
-                    else if (tagName.equalsIgnoreCase("coordinates")){
-                        insideCoordinates=true;
-                    }
-                }else if(event == XmlPullParser.END_TAG)
-                { //executed at the end of each tag (element)
+                } else if (event == XmlPullParser.END_TAG) { //executed at the end of each tag (element)
                     Log.d("PARSING XML", "We reached the end of tag: " + xmlPullParser.getName());
-                    String tagName=xmlPullParser.getName();
-                    if(tagName.equalsIgnoreCase("placemark"))
-                    {
+                    String tagName = xmlPullParser.getName();
+                    if (tagName.equalsIgnoreCase("placemark")) {
                         downLoadDatas.add(downLoadData);
-                        downLoadData=new DownLoadData();
+                        downLoadData = new DownLoadData();
                     }
                     insideName = false;
-                    insideDescription=false;
-                    insideAddress=false;
-                    insidePhoneNumber=false;
-                    insidePlacemark=false;
-                    insideCoordinates=false;
-                }else if(event == XmlPullParser.TEXT){
+                    insideDescription = false;
+                    insideAddress = false;
+                    insidePhoneNumber = false;
+                    insidePlacemark = false;
+                    insideCoordinates = false;
+                } else if (event == XmlPullParser.TEXT) {
                     String text = xmlPullParser.getText();
                     Log.d("PARSING XML", "found text: " + text);
-                    if(insideName){
-                        downLoadData.libraryName=text;
+                    if (insideName) {
+                        downLoadData.libraryName = text;
                         //headlines.add(text);
-                    }
-                    else if(insideDescription)
-                    {
-                        downLoadData.link=text;
+                    } else if (insideDescription) {
+                        String[] linkarr = text.split("Link:");
+                        downLoadData.link = linkarr[1];
                         //headlineLinks.add(text);
-                    }
-                    else if (insideAddress){
-                        downLoadData.address=text;
-                    }
-                    else if (insidePhoneNumber){
-                        downLoadData.phoneNumber=text;
-                    }
-                    else if (insideCoordinates){
-                        downLoadData.coordinates=text;
+                    } else if (insideAddress) {
+                        downLoadData.address = text;
+                    } else if (insidePhoneNumber) {
+                        downLoadData.phoneNumber = text;
+                    } else if (insideCoordinates) {
+                        downLoadData.coordinates = text;
                     }
                 }
                 //don't forget to get the next event in the xml file
@@ -340,13 +437,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Log.d("PARSING XML", "reached the end of the file");
 
 
-        } catch (Exception e){
+        } catch (Exception e) {
             Log.d("DOWNLOAD ERROR", e.getMessage());
         }
     }
     //Qu_3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
-
-
 
 
     /**
@@ -366,13 +461,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap = googleMap;
         mMap.setLatLngBoundsForCameraTarget(toronto_latLngBounds);
 
+        mMap.setMyLocationEnabled(true);
+
+
 
         //set marker clicker listener
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
 
-               displayLibrary(marker);
+                displayLibrary(marker);
                 return false;
             }
         });
@@ -388,32 +486,37 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             mMap.setMyLocationEnabled(true);
         }
 
-        if(isDataLoaded == true){
+        if (isDataLoaded == true) {
             addMapMarkers(mMap, downLoadDatas);
         }
 
 
-
-
-
         LatLng toronto = new LatLng(43.653908, -79.384293);
+
+
         //set map rang in 5000 meters
         Circle circle = mMap.addCircle(new CircleOptions().center(toronto).radius(5000).strokeColor(Color.RED));
         circle.setVisible(false);
+/*
 
         mMap.addMarker(new MarkerOptions()
                 .title("toronto")
                 .snippet("ha")
                 .position(toronto));
+*/
 
         //convert this circle range to zoom level number
         //Note: !!!getZommLevel() function is borrowed from stackoverflow
         //Note: !!!see details for this code source
         int zoomlevel = getZoomLevel(circle);
 
-
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
 
+        //get current location
+        if (currentLocation != null) {
+            LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, zoomlevel));
+        }
 
 
     }
@@ -422,18 +525,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     //which ever coming first
     //isDataloaded = true, call this funtion in onMapReady(GoogleMap googleMap) funtion
     //isMapReady = true, call this funtion in DownloadAndParseKMLTask.onPostExecute(Long result)
-    public void addMapMarkers(GoogleMap mMap, Vector<DownLoadData> downLoadDatas){
+    public void addMapMarkers(GoogleMap mMap, Vector<DownLoadData> downLoadDatas) {
         int i = 0;
         // Add a library marker in Toronto and move the camera
-        for(DownLoadData dd : downLoadDatas) {
-            String  coordinate = dd.coordinates;
+        for (DownLoadData dd : downLoadDatas) {
+            String coordinate = dd.coordinates;
             String[] string_latlng = coordinate.split(",");
             double longitude = Double.parseDouble(string_latlng[0]);
             double latitude = Double.parseDouble(string_latlng[1]);
-            LatLng library = new LatLng(latitude,longitude);
+            LatLng library = new LatLng(latitude, longitude);
             mMap.addMarker(new MarkerOptions()
-                    .title(dd.libraryName)
-                    .snippet(dd.address)
                     .position(library));
 
             i++;
@@ -443,32 +544,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
 
-
-
-
-
     //convert kilometers to zoom level
     //!!! note: external code from: https://stackoverflow.com/questions/6002563/android-how-do-i-set-the-zoom-level-of-map-view-to-1-km-radius-around-my-curren
     public int getZoomLevel(Circle circle) {
         int zoomLevel = 13;
-        if (circle != null){
+        if (circle != null) {
             double radius = circle.getRadius();
             double scale = radius / 500;
-             zoomLevel=(int) (16 - Math.log(scale) / Math.log(2));
+            zoomLevel = (int) (16 - Math.log(scale) / Math.log(2));
         }
-        return  zoomLevel;
+        return zoomLevel;
     }
 
 
     //Display library info
     private void displayLibrary(Marker marker) {
-        initiatePopupWindow(marker) ;
+        initiatePopupWindow(marker);
     }
-
-
-
-
-
 
 
     //set up pop up window to display libarary when a map marker is clicked
@@ -492,15 +584,35 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             TextView nameView = (TextView) layout.findViewById(R.id.name);
             TextView addrView = (TextView) layout.findViewById(R.id.address);
             TextView phoneView = (TextView) layout.findViewById(R.id.phone);
+            final TextView linkView = (TextView) layout.findViewById(R.id.link);
 
-            nameView.setText(marker.getTitle());
-            String libaryName = marker.getTitle();
-            for(DownLoadData dd : downLoadDatas) {
-                if(libaryName.equalsIgnoreCase(dd.libraryName)){
+
+            LatLng libaryLocation = marker.getPosition();
+
+            for (DownLoadData dd : downLoadDatas) {
+                String coordinate = dd.coordinates;
+                String[] string_latlng = coordinate.split(",");
+                double longitude = Double.parseDouble(string_latlng[0]);
+                double latitude = Double.parseDouble(string_latlng[1]);
+                LatLng currLibraryLocation = new LatLng(latitude, longitude);
+
+                if (libaryLocation.longitude == currLibraryLocation.longitude
+                        || libaryLocation.latitude == currLibraryLocation.latitude) {
+                    nameView.setText(dd.libraryName);
                     addrView.setText(dd.address);
                     phoneView.setText(dd.phoneNumber);
+                    linkView.setText(dd.link);
+
                 }
             }
+            linkView.setOnClickListener( new View.OnClickListener(){
+                @Override
+                public void onClick(View v) {
+                    rowViewOnClickHandler(linkView);
+                }
+            });
+
+
 
 
         } catch (Exception e) {
@@ -516,8 +628,80 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     //end of set up pop up window to display libarary when a map marker is clicked
 
 
+   @Override
+    public void onConnected(@Nullable Bundle bundle) {
+
+        isLocationServiceConnected = true;
+
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+
+            //// 1 is the request code for call back funciton : onRequestPermissionsResult()
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, 1);
 
 
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permissionIsGranted. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        //set locationRequest
+        LocationServices.FusedLocationApi.requestLocationUpdates(googleApiClient, locationRequest, this);
+
+
+        //Log.d("Location", " current currentLocation is " + currentLocation.getLatitude() + "," + currentLocation.getLongitude());
+
+
+    }
+
+
+
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+    }
+
+
+    // implements of LocationListener
+    @Override
+    public void onLocationChanged(Location location) {
+        currentLocation = location;
+        if(mMap != null){
+
+            LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+            //set map rang in 5000 meters
+            Circle circle = mMap.addCircle(new CircleOptions().center(currentLatLng).radius(5000).strokeColor(Color.RED));
+            circle.setVisible(false);
+
+            int zoomlevel = getZoomLevel(circle);
+
+
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, zoomlevel));
+
+        }
+    }
+
+
+
+    // library link on click handled here
+    private void rowViewOnClickHandler(TextView linkView){
+
+        String link = linkView.getText().toString();
+        String newlink = link.trim();
+        Intent webPageRequest = new Intent(Intent.ACTION_VIEW, Uri.parse(newlink));
+        this.startActivity(webPageRequest);
+    }
 
 
 }
