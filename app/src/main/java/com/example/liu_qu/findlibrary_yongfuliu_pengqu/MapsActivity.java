@@ -562,7 +562,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             //Inflate the view from a predefined XML layout
             View layout = inflater.inflate(R.layout.popup_window_layout, (ViewGroup) findViewById(R.id.popup_window));
             // create a 300px width and 470px height PopupWindow
-            pw = new PopupWindow(layout, 600, 700, true);
+            pw = new PopupWindow(layout, 600, 1000, true);
             // display the popup in the center
             pw.showAtLocation(layout, Gravity.CENTER, 0, 0);
 
@@ -574,6 +574,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             TextView addrView = (TextView) layout.findViewById(R.id.address);
             TextView phoneView = (TextView) layout.findViewById(R.id.phone);
             final TextView linkView = (TextView) layout.findViewById(R.id.link);
+            TextView distanceView = (TextView) layout.findViewById(R.id.distance);
 
 
             LatLng libaryLocation = marker.getPosition();
@@ -583,14 +584,20 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 String[] string_latlng = coordinate.split(",");
                 double longitude = Double.parseDouble(string_latlng[0]);
                 double latitude = Double.parseDouble(string_latlng[1]);
-                LatLng currLibraryLocation = new LatLng(latitude, longitude);
+                LatLng currLibraryLatLng = new LatLng(latitude, longitude);
 
-                if (libaryLocation.longitude == currLibraryLocation.longitude
-                        || libaryLocation.latitude == currLibraryLocation.latitude) {
+                Location currentLibraryLocation = new Location(LocationManager.GPS_PROVIDER);
+                currentLibraryLocation.setLatitude(latitude);
+                currentLibraryLocation.setLongitude(longitude);
+                float distance = (currentLocation.distanceTo(currentLibraryLocation))/1000;
+
+                if (libaryLocation.longitude == currLibraryLatLng.longitude
+                        || libaryLocation.latitude == currLibraryLatLng.latitude) {
                     nameView.setText(dd.libraryName);
                     addrView.setText(dd.address);
                     phoneView.setText(dd.phoneNumber);
                     linkView.setText(dd.link);
+                    distanceView.setText(distance+" km");
 
                 }
             }
