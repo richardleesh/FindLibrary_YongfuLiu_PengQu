@@ -7,7 +7,6 @@ import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Looper;
 import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -28,14 +27,9 @@ import android.widget.Toast;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.Status;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.LocationSettingsRequest;
-import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -50,8 +44,6 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserFactory;
@@ -59,12 +51,7 @@ import org.xmlpull.v1.XmlPullParserFactory;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.security.Permission;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Timer;
 import java.util.Vector;
-import java.util.jar.Manifest;
 
 import static com.google.android.gms.location.LocationServices.getFusedLocationProviderClient;
 
@@ -74,8 +61,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     // declare location request
     private LocationRequest locationRequest;
-    public static final int UPDATE_INTERVAL = 5000; // 5 secs
-    public static final int FASTEST_UPDATE_INTERVAL = 2000;// 2 secs
+    public static final int UPDATE_INTERVAL = 60000; // 60 secs
+    public static final int FASTEST_UPDATE_INTERVAL = 60000;// 60secs
 
 
     private boolean permissionIsGranted = true;
@@ -259,12 +246,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onStart() {
         super.onStart();
-        //googleApiClient.connect();
+        googleApiClient.connect();
     }
 
     @Override
     public void onStop() {
-        //googleApiClient.disconnect();
+        googleApiClient.disconnect();
         super.onStop();
     }
 
@@ -510,12 +497,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //Note: !!!see details for this code source
         int zoomlevel = getZoomLevel(circle);
 
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
+
 
         //get current location
         if (currentLocation != null) {
             LatLng currentLatLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
             mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, zoomlevel));
+        } else {
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(toronto, zoomlevel));
         }
 
 
@@ -608,7 +597,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             linkView.setOnClickListener( new View.OnClickListener(){
                 @Override
                 public void onClick(View v) {
-                    rowViewOnClickHandler(linkView);
+                    libraryOnClickHandler(linkView);
                 }
             });
 
@@ -673,6 +662,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
 
+
+    public void onStatusChanged(String s, int i, Bundle bundle) {
+        return;
+
+    }
+
+
+    public void onProviderEnabled(String s) {
+        return;
+    }
+
+
+    public void onProviderDisabled(String s) {
+
+    }
+
+
+
+
     // implements of LocationListener
     @Override
     public void onLocationChanged(Location location) {
@@ -695,7 +703,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
     // library link on click handled here
-    private void rowViewOnClickHandler(TextView linkView){
+    private void libraryOnClickHandler(TextView linkView){
 
         String link = linkView.getText().toString();
         String newlink = link.trim();
